@@ -34,8 +34,9 @@ Stockage :
   `version (1) | masque 68 bits (9 octets) | 68 x RGB (204 octets) | somme (2)` = 216 octets.
   La somme est la somme 16 bits des octets précédents. Version ou somme invalide au démarrage : couche vide.
 - backend : `EEPROM_DRIVER = wear_leveling`, `WEAR_LEVELING_DRIVER = embedded_flash`, EFL ChibiOS sur l'APROM de la
-  NUC123 (secteurs de 512 o, écriture 4 o, déjà prévue par QMK pour la famille NUC123). Zone réservée : les derniers
-  secteurs de l'APROM (taille de backing 2 Ko par défaut ; le firmware fait ~33 Ko sur 68 Ko). LDROM et CONFIG restent
+  NUC123 (secteurs de 512 o, écriture 4 o). Zone réservée : les 2 derniers Ko de l'APROM programmable, soit
+  0xF800-0xFFFF (la puce de 68 Ko garde 4 Ko de data flash en 0x1F000 : l'APROM fait 64 Ko). Le firmware doit rester
+  sous 0xF800. Validé sur le matériel le 2026-09-30 (après correction : une première version plaçait la zone en 0x10800). LDROM et CONFIG restent
   inaccessibles au driver (`NUC123_EFL_ACCESS_LDROM/CONFIG = FALSE`) : le bootloader ne peut pas être touché.
 
 Effets inclus, avec identifiants stables exposés par le protocole (indépendants de l'énumération QMK) :
