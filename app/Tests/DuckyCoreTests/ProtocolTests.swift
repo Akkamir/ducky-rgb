@@ -57,7 +57,8 @@ final class ProtocolTests: XCTestCase {
     }
 
     func testEffectCatalogNames() {
-        XCTAssertEqual(EffectCatalog.all.count, 14)
+        XCTAssertEqual(EffectCatalog.all.count, 15)
+        XCTAssertEqual(EffectCatalog.name(for: 15), "Heatmap sur fond")
         XCTAssertEqual(EffectCatalog.name(for: 1), "Couleur unie")
         XCTAssertEqual(EffectCatalog.name(for: 99), "Effet 99")
     }

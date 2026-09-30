@@ -20,6 +20,7 @@ public enum EffectCatalog {
         Effect(id: 12, name: "Ondes multiples"),
         Effect(id: 13, name: "Heatmap de frappe"),
         Effect(id: 14, name: "Bande de saturation"),
+        Effect(id: 15, name: "Heatmap sur fond"),
     ]
 
     public static func name(for id: UInt8) -> String {

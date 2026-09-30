@@ -8,7 +8,7 @@ class FakeKeyboard:
     """Implements the firmware side of protocol v2 (hostrgb_protocol.c) for tests."""
 
     def __init__(self):
-        self.effects = list(range(1, 15))
+        self.effects = list(range(1, 16))
         self.base = [1, 5, 0, 255, 200, 128]
         self.overlay = [None] * 68
         self.saved = None
@@ -83,8 +83,8 @@ def keyboard():
 class ProtocolV2Test(unittest.TestCase):
     def test_info_and_effects(self):
         kb = keyboard()
-        self.assertEqual(kb.info(), {"version": 2, "leds": 68, "effects": 14, "persistent": True})
-        self.assertEqual(kb.effects(14), list(range(1, 15)))
+        self.assertEqual(kb.info(), {"version": 2, "leds": 68, "effects": 15, "persistent": True})
+        self.assertEqual(kb.effects(15), list(range(1, 16)))
 
     def test_set_base_then_state(self):
         kb = keyboard()
