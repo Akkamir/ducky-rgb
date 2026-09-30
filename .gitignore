@@ -5,3 +5,5 @@ __pycache__/
 # Kept locally only
 backup/
 NOTES.md
+app/.build/
+app/build/
