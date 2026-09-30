@@ -154,6 +154,54 @@ class Keyboard:
             start = end
 
 
+    CMD_GET_INFO, CMD_GET_EFFECTS, CMD_GET_STATE, CMD_SET_BASE = 0x10, 0x11, 0x12, 0x13
+    CMD_GET_OVERLAY, CMD_SET_OVERLAY, CMD_CLEAR_OVERLAY, CMD_SAVE = 0x14, 0x15, 0x16, 0x17
+    BASE_FIELDS = ("enabled", "effect", "hue", "sat", "val", "speed")
+
+    def info(self):
+        p = self.command(self.CMD_GET_INFO)[2:]
+        return {"version": p[0], "leds": p[1], "effects": p[2], "persistent": bool(p[3])}
+
+    def effects(self, count):
+        ids = []
+        while len(ids) < count:
+            p = self.command(self.CMD_GET_EFFECTS, len(ids))[2:]
+            if p[1] == 0:
+                break
+            ids += p[2:2 + p[1]]
+        return ids
+
+    def state(self):
+        p = self.command(self.CMD_GET_STATE)[2:]
+        base = dict(zip(self.BASE_FIELDS, p[:6]))
+        base["enabled"] = bool(base["enabled"])
+        return {"base": base, "host_mode": bool(p[6]), "custom_leds": p[7], "dirty": bool(p[8])}
+
+    def set_base(self, enabled, effect, hue, sat, val, speed):
+        self.command(self.CMD_SET_BASE, int(enabled), effect, hue, sat, val, speed)
+
+    def overlay(self, leds=68):
+        colors = []
+        while len(colors) < leds:
+            p = self.command(self.CMD_GET_OVERLAY, len(colors))[2:]
+            for i in range(p[1]):
+                e = p[2 + 4 * i:6 + 4 * i]
+                colors.append(tuple(e[1:]) if e[0] & 1 else None)
+        return colors
+
+    def set_overlay(self, colors):
+        for first in range(0, len(colors), 7):
+            chunk = colors[first:first + 7]
+            args = [c for color in chunk for c in ((1, *color) if color else (0, 0, 0, 0))]
+            self.command(self.CMD_SET_OVERLAY, first, len(chunk), *args)
+
+    def clear_overlay(self):
+        self.command(self.CMD_CLEAR_OVERLAY)
+
+    def save(self):
+        self.command(self.CMD_SAVE)
+
+
 def text_frame(columns, offset, color_at):
     """Light each key by the share of its rectangle covered by lit text pixels.
 
@@ -255,6 +303,23 @@ def main():
     p.add_argument("--smooth", action="store_true", help="rendu physique anti-aliasé (plus fluide, moins lisible)")
     p.add_argument("--ribbon", action="store_true", help="ruban continu sans fin (Ctrl-C pour arrêter)")
     p.add_argument("--straight", action="store_true", help="grille calée sur la position physique (moins penché)")
+    sub.add_parser("info", help="protocole v2 : version, LEDs, effets, persistance")
+    sub.add_parser("state", help="protocole v2 : réglage courant du clavier")
+    p = sub.add_parser("base", help="protocole v2 : régler le fond (les champs omis sont conservés)")
+    p.add_argument("--effect", type=int)
+    p.add_argument("--hue", type=int)
+    p.add_argument("--sat", type=int)
+    p.add_argument("--val", type=int)
+    p.add_argument("--speed", type=int)
+    p.add_argument("--on", dest="enabled", action="store_true", default=None)
+    p.add_argument("--off", dest="enabled", action="store_false")
+    p = sub.add_parser("paint", help="protocole v2 : couleur personnalisée sur des touches")
+    p.add_argument("names", type=parse_keys)
+    p.add_argument("color", type=parse_color)
+    p = sub.add_parser("unpaint", help="protocole v2 : rendre des touches au fond")
+    p.add_argument("names", type=parse_keys)
+    sub.add_parser("clear-overlay", help="protocole v2 : effacer toutes les couleurs personnalisées")
+    sub.add_parser("save", help="protocole v2 : enregistrer le réglage dans le clavier")
     sub.add_parser("off", help="tout éteindre")
     sub.add_parser("effects", help="rendre la main aux effets du firmware")
     args = parser.parse_args()
@@ -278,6 +343,26 @@ def main():
         kb.set_leds(colors)
     elif args.cmd == "text":
         scroll_text(kb, args.text, args.color, args.rainbow, args.speed, args.loops, args.fps, args.smooth, args.ribbon, args.straight)
+    elif args.cmd == "info":
+        print(kb.info())
+    elif args.cmd == "state":
+        print(kb.state())
+    elif args.cmd == "base":
+        base = kb.state()["base"]
+        for field in Keyboard.BASE_FIELDS:
+            value = getattr(args, field)
+            if value is not None:
+                base[field] = value
+        kb.set_base(**base)
+    elif args.cmd in ("paint", "unpaint"):
+        colors = kb.overlay()
+        for i in args.names:
+            colors[i] = args.color if args.cmd == "paint" else None
+        kb.set_overlay(colors)
+    elif args.cmd == "clear-overlay":
+        kb.clear_overlay()
+    elif args.cmd == "save":
+        kb.save()
     elif args.cmd == "effects":
         kb.host_mode(False)
 
