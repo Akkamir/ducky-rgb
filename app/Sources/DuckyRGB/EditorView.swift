@@ -6,6 +6,8 @@ struct EditorView: View {
 
     @Environment(LightingController.self) private var controller
     @Environment(PresetStore.self) private var presets
+    @Environment(AudioMode.self) private var audio
+    @Environment(\.controlActiveState) private var activeState
     @State private var tool: Tool = .brush
     @State private var brush = Color.red
     @State private var savingPreset = false
@@ -58,5 +60,8 @@ struct EditorView: View {
                 presets.add(Preset(name: presetName, base: controller.base, overlay: controller.overlay))
             }
         }
+        // While the editor is the key window, the audio mode pauses: the saved lighting stays visible.
+        .onChange(of: activeState, initial: true) { _, state in audio.setPaused(state == .key) }
+        .onDisappear { audio.setPaused(false) }
     }
 }

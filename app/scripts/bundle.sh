@@ -22,7 +22,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key><string>1</string>
-    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSMinimumSystemVersion</key><string>14.2</string>
+    <key>NSAudioCaptureUsageDescription</key><string>Ducky RGB lit le son du système pour animer le clavier au rythme de la musique.</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
 </dict>
