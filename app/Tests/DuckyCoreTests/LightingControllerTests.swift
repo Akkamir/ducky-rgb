@@ -185,7 +185,7 @@ final class LightingControllerTests: XCTestCase {
         for i in 0..<50 { controller.showLiveFrame([RGB](repeating: RGB(UInt8(i), 0, 0), count: 68)) }
         await waitUntil { fake.hostColors.first == RGB(49, 0, 0) }
         XCTAssertEqual(fake.hostColors.first, RGB(49, 0, 0))
-        XCTAssertLessThan(fake.commands().filter { $0 == .hostSet }.count, 50 * 8)
+        XCTAssertLessThan(fake.commands().filter { $0 == .hostSet }.count, 10 * 8)
     }
 
     func testOwnLiveFramesDoNotShowCLIBanner() async {
@@ -222,5 +222,46 @@ final class LightingControllerTests: XCTestCase {
         controller.flushPendingSave { flushed = true }
         await waitUntil { flushed }
         XCTAssertFalse(fake.hostMode)
+    }
+
+
+    func testFrameQueuedBeforeEndDoesNotOutliveHostModeOff() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        fake.exchangeDelay = 0.01
+        controller.refresh() // keeps the HID queue busy
+        controller.showLiveFrame([RGB](repeating: RGB(1, 0, 0), count: 68))
+        controller.endLiveFrames()
+        let frame = [RGB](repeating: RGB(2, 0, 0), count: 68)
+        controller.showLiveFrame(frame)
+        await waitUntil(3) { fake.hostColors == frame }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertTrue(fake.hostMode)
+        XCTAssertEqual(fake.hostColors, frame)
+    }
+
+    func testFailedHostModeIsRetried() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        fake.throwNext(.hostMode, .timeout)
+        controller.showLiveFrame([RGB](repeating: .black, count: 68))
+        await waitUntil { !controller.showingLiveFrames }
+        XCTAssertFalse(controller.showingLiveFrames)
+        controller.showLiveFrame([RGB](repeating: .black, count: 68))
+        await waitUntil { fake.hostMode }
+        XCTAssertTrue(fake.hostMode)
+    }
+
+    func testRefreshQueuedDuringLiveFramesDoesNotShowCLIBanner() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        controller.showLiveFrame([RGB](repeating: .black, count: 68))
+        await waitUntil { fake.hostMode }
+        fake.exchangeDelay = 0.01
+        controller.refresh() // reads host mode on, applied after the end
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        controller.endLiveFrames()
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        XCTAssertFalse(controller.hostMode)
     }
 }

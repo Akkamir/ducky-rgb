@@ -12,6 +12,8 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
     private var thrownErrors: [Command: DuckyError] = [:]
     /// Rewrites replies before they are returned (simulates corrupted or late replies).
     var replyFilter: ((Command, [UInt8]) -> [UInt8])?
+    /// Simulated USB round trip.
+    var exchangeDelay: TimeInterval = 0
 
     let version: UInt8
     let effectIDs: [UInt8]
@@ -52,6 +54,7 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
     }
 
     func exchange(_ report: [UInt8], timeout: TimeInterval) throws -> [UInt8] {
+        if exchangeDelay > 0 { Thread.sleep(forTimeInterval: exchangeDelay) }
         let reply = try respond(to: report)
         guard let command = Command(rawValue: report[0]), let replyFilter else { return reply }
         return replyFilter(command, reply)

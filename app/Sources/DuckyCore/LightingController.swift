@@ -112,13 +112,14 @@ public final class LightingController {
 
     /// Re-reads everything from the keyboard.
     public func refresh() {
+        let liveWhenQueued = showingLiveFrames
         queue.async { [client] in
             let result = Result { try Self.readSnapshot(client) }
-            Task { @MainActor [weak self] in self?.apply(snapshot: result) }
+            Task { @MainActor [weak self] in self?.apply(snapshot: result, liveWhenQueued: liveWhenQueued) }
         }
     }
 
-    private func apply(snapshot result: Result<Snapshot, Error>) {
+    private func apply(snapshot result: Result<Snapshot, Error>, liveWhenQueued: Bool) {
         switch result {
         case .failure(let error):
             report(error)
@@ -130,7 +131,8 @@ public final class LightingController {
             self.info = info
             effects = EffectCatalog.effects(for: snapshot.effectIDs)
             base = state.base
-            hostMode = state.hostMode && !showingLiveFrames // our own live frames are not "the CLI"
+            // Our own live frames are not "the CLI" (the read may predate their end).
+            hostMode = state.hostMode && !liveWhenQueued && !showingLiveFrames
             overlay = snapshot.overlay
             saveState = state.dirty ? .pending : .saved
             lastError = nil
@@ -197,14 +199,22 @@ public final class LightingController {
         guard canControl else { return }
         let enableHostMode = !showingLiveFrames
         showingLiveFrames = true
-        guard liveFrame.put(colors, enableHostMode: enableHostMode) else { return }
+        guard let generation = liveFrame.put(colors, enableHostMode: enableHostMode) else { return }
         queue.async { [client, liveFrame] in
-            guard let next = liveFrame.take() else { return }
+            guard let next = liveFrame.take(generation: generation) else { return }
             do {
                 if next.enableHostMode { try client.setHostMode(true) }
                 try client.sendHostFrame(next.frame)
             } catch {
-                Task { @MainActor [weak self] in self?.report(error) }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if next.enableHostMode, self.showingLiveFrames {
+                        // Host mode may be off: the next frame asks for it again.
+                        self.showingLiveFrames = false
+                        self.liveFrame.clear()
+                    }
+                    self.report(error)
+                }
             }
         }
     }
@@ -215,7 +225,10 @@ public final class LightingController {
         showingLiveFrames = false
         liveFrame.clear()
         queue.async { [client] in
-            do { try client.setHostMode(false) } catch {
+            do {
+                // A keyboard left in host mode would stay frozen on the last frame: try twice.
+                do { try client.setHostMode(false) } catch { try client.setHostMode(false) }
+            } catch {
                 Task { @MainActor [weak self] in self?.report(error) }
             }
         }
@@ -283,24 +296,26 @@ public final class LightingController {
 }
 
 /// Holds the latest live frame until the HID queue sends it; older unsent frames are replaced.
+/// `clear()` starts a new generation: sends queued before it no longer take frames.
 final class LiveFrameSlot: @unchecked Sendable {
     private let lock = NSLock()
     private var frame: [RGB]?
     private var enableHostMode = false
+    private var generation = 0
 
-    /// Stores the frame; returns true when no send is queued yet.
-    func put(_ colors: [RGB], enableHostMode enable: Bool) -> Bool {
+    /// Stores the frame; returns the generation to send it with when no send is queued yet.
+    func put(_ colors: [RGB], enableHostMode enable: Bool) -> Int? {
         lock.withLock {
             let wasEmpty = frame == nil
             frame = colors
             enableHostMode = enableHostMode || enable
-            return wasEmpty
+            return wasEmpty ? generation : nil
         }
     }
 
-    func take() -> (frame: [RGB], enableHostMode: Bool)? {
+    func take(generation expected: Int) -> (frame: [RGB], enableHostMode: Bool)? {
         lock.withLock {
-            guard let colors = frame else { return nil }
+            guard expected == generation, let colors = frame else { return nil }
             let enable = enableHostMode
             frame = nil
             enableHostMode = false
@@ -312,6 +327,7 @@ final class LiveFrameSlot: @unchecked Sendable {
         lock.withLock {
             frame = nil
             enableHostMode = false
+            generation += 1
         }
     }
 }

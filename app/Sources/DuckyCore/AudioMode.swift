@@ -52,9 +52,12 @@ public final class AudioMode {
     }
 
     public func setArmed(_ armed: Bool) {
-        guard armed != isArmed else { return }
         defaults.set(armed, forKey: Keys.armed)
-        if armed { arm() } else { disarm() }
+        if armed {
+            if !isArmed { arm() }
+        } else {
+            disarm() // also clears a failure
+        }
     }
 
     public func setPaused(_ paused: Bool) {
@@ -78,13 +81,17 @@ public final class AudioMode {
         let capture = makeCapture()
         let analyzer = SpectrumAnalyzer(sampleRate: capture.sampleRate)
         capture.onSamples = { samples in analyzer.append(samples) }
+        capture.onFailure = { [weak self] error in
+            Task { @MainActor in self?.captureFailed(error) }
+        }
         do {
             try capture.start()
         } catch {
+            // The stored choice is kept: a transient failure at login does not disarm for good.
+            capture.stop()
             capture.onSamples = nil
-            isArmed = false
-            defaults.set(false, forKey: Keys.armed)
-            status = .failed(Self.describe(error))
+            capture.onFailure = nil
+            captureFailed(error)
             return
         }
         analyzer.sampleRate = capture.sampleRate
@@ -103,6 +110,13 @@ public final class AudioMode {
         }
     }
 
+    private func captureFailed(_ error: Error) {
+        stopCapture()
+        controller.endLiveFrames()
+        isArmed = false
+        status = .failed(Self.describe(error))
+    }
+
     private func disarm() {
         stopCapture()
         controller.endLiveFrames()
@@ -115,6 +129,7 @@ public final class AudioMode {
         loop = nil
         capture?.stop()
         capture?.onSamples = nil
+        capture?.onFailure = nil
         capture = nil
         analyzer = nil
         silentSince = nil
@@ -127,6 +142,11 @@ public final class AudioMode {
         let spectrum = analyzer.analyze()
         if isPaused {
             status = .paused
+            return
+        }
+        guard controller.canControl else {
+            status = .listening // nothing to light yet: the keyboard is absent
+            silentSince = nil
             return
         }
         if spectrum.rmsDB < SpectrumAnalyzer.silenceThresholdDB {

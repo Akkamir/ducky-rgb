@@ -3,6 +3,7 @@ import XCTest
 
 final class FakeAudioCapture: AudioCapture, @unchecked Sendable {
     var onSamples: (@Sendable ([Float]) -> Void)?
+    var onFailure: (@Sendable (Error) -> Void)?
     var sampleRate: Double = 48000
     var failure: AudioCaptureError?
     private(set) var running = false
@@ -13,6 +14,12 @@ final class FakeAudioCapture: AudioCapture, @unchecked Sendable {
     }
 
     func stop() { running = false }
+
+    /// Simulates capture dying later (e.g. the restart on a new output device failed).
+    func die(_ error: AudioCaptureError) {
+        running = false
+        onFailure?(error)
+    }
 
     func play(_ samples: [Float]) { onSamples?(samples) }
 }
@@ -110,6 +117,57 @@ final class AudioModeTests: XCTestCase {
         mode.setArmed(true)
         XCTAssertFalse(mode.isArmed)
         guard case .failed = mode.status else { return XCTFail("expected failure, got \(mode.status)") }
+        mode.setArmed(false)
+        XCTAssertEqual(mode.status, .off)
+    }
+
+    func testCaptureDyingLaterIsReported() async {
+        let capture = FakeAudioCapture()
+        let (fake, _, mode) = await setUp(capture)
+        mode.setArmed(true)
+        capture.play(tone)
+        mode.tick()
+        await waitUntil { fake.hostMode }
+        capture.die(.coreAudio("restart", -1))
+        await waitUntil { mode.status != .playing }
+        XCTAssertFalse(mode.isArmed)
+        guard case .failed = mode.status else { return XCTFail("expected failure, got \(mode.status)") }
+        await waitUntil { !fake.hostMode }
+        XCTAssertFalse(fake.hostMode)
+    }
+
+    func testQuitHandsLEDsBackAndStaysArmedForNextLaunch() async {
+        let capture = FakeAudioCapture()
+        let (fake, controller, mode) = await setUp(capture)
+        mode.setArmed(true)
+        capture.play(tone)
+        mode.tick()
+        await waitUntil { fake.hostMode }
+        mode.suspendForQuit()
+        XCTAssertFalse(capture.running)
+        await waitUntil { !fake.hostMode }
+        XCTAssertFalse(fake.hostMode)
+        let next = AudioMode(controller: controller, makeCapture: { FakeAudioCapture() }, defaults: defaults, autoTick: false)
+        next.restore()
+        XCTAssertTrue(next.isArmed)
+    }
+
+    func testArmedBeforeKeyboardConnects() async {
+        let capture = FakeAudioCapture()
+        let fake = FakeKeyboard(connected: false)
+        let controller = LightingController(transport: fake, saveDelay: 0.1)
+        controller.start()
+        let mode = AudioMode(controller: controller, makeCapture: { capture }, defaults: defaults, autoTick: false)
+        mode.setArmed(true)
+        capture.play(tone)
+        mode.tick()
+        XCTAssertEqual(mode.status, .listening)
+        fake.setConnected(true)
+        await waitUntil { controller.connection == .connected }
+        mode.tick()
+        XCTAssertEqual(mode.status, .playing)
+        await waitUntil { fake.hostMode }
+        XCTAssertTrue(fake.hostMode)
     }
 
     func testArmedStateAndPaletteAreRemembered() async {
