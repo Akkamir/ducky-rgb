@@ -75,7 +75,14 @@ python3 -m venv .venv && .venv/bin/pip install hidapi
 ./ducky-rgb gradient red blue
 ./ducky-rgb off
 ./ducky-rgb effects                # hand the LEDs back to the firmware effect
+./ducky-rgb text "HELLO"           # scrolling text, then back to the effect
+./ducky-rgb text "PD" --ribbon --rainbow --speed 3   # endless ribbon, Ctrl-C to stop
 ```
+
+Scrolling text uses a 3x5 font on the 5 key rows at ~38 frames/s. Three renderings were compared on
+the board: the default maps text pixels onto the switch matrix (row k-th key = column k), which is the
+most readable; letters lean slightly because the rows are staggered. `--straight` samples the physical
+key positions instead and `--smooth` anti-aliases by key coverage; both read worse on hardware.
 
 `tools/detect.py` reports whether the keyboard is on the stock firmware, in the bootloader, or absent.
 
