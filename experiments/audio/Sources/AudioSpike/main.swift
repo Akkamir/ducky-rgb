@@ -1,6 +1,6 @@
 // EXPERIMENT: system audio (Core Audio process tap, macOS 14.2+) driving the Ducky in real time.
 // Usage (as an app bundle, for the audio capture permission): open DuckyAudio.app --args <style>
-// Styles: eq (default), rings, pulse, colors, waves. Ctrl-C / SIGTERM hands the LEDs back to the effect.
+// Styles: eq (default), eq-smooth, eq-peaks, eq-rainbow, eq-mirror, rings, pulse, colors, waves. Ctrl-C / SIGTERM hands the LEDs back to the effect.
 import Accelerate
 import AudioToolbox
 import CoreAudio
@@ -190,6 +190,44 @@ func equaliser(_ a: Analysis) -> [RGB] {
     }
 }
 
+struct EqualiserOptions {
+    var smooth = false  // the top LED of a bar lights partially instead of jumping row to row
+    var peaks = false   // a white dot holds each bar's peak, then falls slowly
+    var rainbow = false // one colour per column (bass to treble) instead of green-yellow-red rows
+    var mirror = false  // bass in the middle, treble towards both edges
+}
+
+var peakLevels = [Double](repeating: 0, count: bands) // in rows, 0...5
+var peakHold = [Int](repeating: 0, count: bands)
+
+func equaliser(_ a: Analysis, _ options: EqualiserOptions) -> [RGB] {
+    for b in 0..<bands {
+        let height = Double(a.smoothed[b]) * 5
+        if height >= peakLevels[b] {
+            peakLevels[b] = height
+            peakHold[b] = 12
+        } else if peakHold[b] > 0 {
+            peakHold[b] -= 1
+        } else {
+            peakLevels[b] = max(0, peakLevels[b] - 0.08)
+        }
+    }
+    let rowColors = [RGB(255, 0, 0), RGB(255, 120, 0), RGB(230, 230, 0), RGB(80, 255, 0), RGB(0, 255, 60)]
+    return keys.map { key in
+        var b = band(of: key)
+        if options.mirror { b = min(bands - 1, abs(b - 7) * 2) }
+        let row = Int(key.y + key.height - 1)
+        let level = Double(4 - row) // 0 at the bottom row, 4 at the top
+        let height = Double(a.smoothed[b]) * 5
+        let fill = options.smooth ? max(0, min(1, height - level)) : (level < height.rounded() ? 1 : 0)
+        let colour = options.rainbow ? hsv(Double(b) / Double(bands) * 300, 1, 1) : rowColors[row]
+        if options.peaks, fill < 0.3, peakLevels[b] > 0.5, Int(level) == min(4, Int(peakLevels[b])) {
+            return RGB(200, 200, 200)
+        }
+        return colour.scaled(by: UInt8(fill * 255))
+    }
+}
+
 var flash: Double = 0
 /// Whole keyboard breathes with the loudness; each bass beat flashes towards white; hue drifts.
 func pulse(_ a: Analysis, time: Double) -> [RGB] {
@@ -295,6 +333,10 @@ DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
             let time = Date().timeIntervalSince(start)
             let frame: [RGB]
             switch style {
+            case "eq-smooth": frame = equaliser(analysis, EqualiserOptions(smooth: true))
+            case "eq-peaks": frame = equaliser(analysis, EqualiserOptions(smooth: true, peaks: true))
+            case "eq-rainbow": frame = equaliser(analysis, EqualiserOptions(smooth: true, rainbow: true))
+            case "eq-mirror": frame = equaliser(analysis, EqualiserOptions(smooth: true, mirror: true))
             case "rings": frame = ringsOnly(analysis, time: time)
             case "pulse": frame = pulse(analysis, time: time)
             case "colors": frame = colors(analysis)
