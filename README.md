@@ -109,10 +109,16 @@ keyboard's flash 2 s after the last change, so the lighting survives a replug wi
 
 ```sh
 cd app
-swift test                 # protocol, layout, presets, controller (simulated keyboard)
+swift test                 # protocol, layout, presets, controller, audio (simulated keyboard)
 scripts/bundle.sh          # builds app/build/Ducky RGB.app (ad hoc signed)
 open "build/Ducky RGB.app"
 ```
+
+**Audio mode** (menu bar, macOS 14.2+): while armed and the Mac plays sound (headphones included),
+the keyboard shows a 15-band equaliser of the system audio, captured with a Core Audio process tap
+(macOS asks for the audio capture permission on first use). Five palettes: classic, ocean, sunset,
+neon, fire. After 3 s of silence, while the editor window is active, or when disarmed, the keyboard
+shows the saved lighting again. Audio frames go through the host mode and are never saved.
 
 It needs the firmware v2 `hostrgb` keymap (protocol v2 + wear-leveled EEPROM). The CLI's `info`,
 `state`, `base`, `paint`, `unpaint`, `clear-overlay` and `save` commands exercise the same protocol.
