@@ -8,7 +8,9 @@ import DuckyCore
 import Foundation
 
 setvbuf(stdout, nil, _IOLBF, 0)
-let style = CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") }) ?? "eq"
+let positional = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-") }
+let style = positional.first ?? "eq"
+let paletteName = positional.dropFirst().first ?? "classic"
 
 func check(_ status: OSStatus, _ what: String) {
     if status != noErr {
@@ -58,7 +60,7 @@ var formatSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
 var formatAddress = AudioObjectPropertyAddress(mSelector: kAudioTapPropertyFormat, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
 check(AudioObjectGetPropertyData(tapID, &formatAddress, 0, nil, &formatSize, &format), "tap format")
 let sampleRate = format.mSampleRate
-print("style \(style) · tap \(sampleRate) Hz, \(format.mChannelsPerFrame) ch, output \(outputUID)")
+print("style \(style) · palette \(paletteName) · tap \(sampleRate) Hz, \(format.mChannelsPerFrame) ch, output \(outputUID)")
 
 let fftSize = 2048
 let lock = NSLock()
@@ -195,7 +197,18 @@ struct EqualiserOptions {
     var peaks = false   // a white dot holds each bar's peak, then falls slowly
     var rainbow = false // one colour per column (bass to treble) instead of green-yellow-red rows
     var mirror = false  // bass in the middle, treble towards both edges
+    var rowColors = palettes["classic"]! // top row first
 }
+
+/// Colours by bar height, top row first (row 0 = top, row 4 = bottom). Kept after comparing on the keyboard;
+/// bottoms start one step bright and tops end on a clear highlight (darker bottoms read as a dim keyboard).
+let palettes: [String: [RGB]] = [
+    "classic": [RGB(255, 0, 0), RGB(255, 120, 0), RGB(230, 230, 0), RGB(80, 255, 0), RGB(0, 255, 60)],
+    "ocean": [RGB(240, 250, 255), RGB(120, 235, 255), RGB(0, 210, 255), RGB(0, 150, 255), RGB(0, 90, 255)],
+    "sunset": [RGB(255, 235, 120), RGB(255, 150, 0), RGB(255, 60, 90), RGB(255, 0, 180), RGB(170, 0, 255)],
+    "neon": [RGB(160, 255, 255), RGB(255, 120, 230), RGB(255, 0, 200), RGB(140, 0, 255), RGB(0, 110, 255)],
+    "fire": [RGB(255, 250, 220), RGB(255, 230, 80), RGB(255, 180, 0), RGB(255, 110, 0), RGB(255, 40, 0)],
+]
 
 var peakLevels = [Double](repeating: 0, count: bands) // in rows, 0...5
 var peakHold = [Int](repeating: 0, count: bands)
@@ -212,7 +225,7 @@ func equaliser(_ a: Analysis, _ options: EqualiserOptions) -> [RGB] {
             peakLevels[b] = max(0, peakLevels[b] - 0.08)
         }
     }
-    let rowColors = [RGB(255, 0, 0), RGB(255, 120, 0), RGB(230, 230, 0), RGB(80, 255, 0), RGB(0, 255, 60)]
+    let rowColors = options.rowColors
     return keys.map { key in
         var b = band(of: key)
         if options.mirror { b = min(bands - 1, abs(b - 7) * 2) }
@@ -333,7 +346,7 @@ DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
             let time = Date().timeIntervalSince(start)
             let frame: [RGB]
             switch style {
-            case "eq-smooth": frame = equaliser(analysis, EqualiserOptions(smooth: true))
+            case "eq-smooth": frame = equaliser(analysis, EqualiserOptions(smooth: true, rowColors: palettes[paletteName] ?? palettes["classic"]!))
             case "eq-peaks": frame = equaliser(analysis, EqualiserOptions(smooth: true, peaks: true))
             case "eq-rainbow": frame = equaliser(analysis, EqualiserOptions(smooth: true, rainbow: true))
             case "eq-mirror": frame = equaliser(analysis, EqualiserOptions(smooth: true, mirror: true))
