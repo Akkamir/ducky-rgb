@@ -39,3 +39,31 @@ public struct RGB: Codable, Hashable, Sendable {
         return RGB(s(r), s(g), s(b))
     }
 }
+
+extension RGB {
+    /// Hue and saturation in 0...1, as NSColor's HSB components report them.
+    public var unitHueSaturation: (hue: Double, saturation: Double) {
+        let r = Double(self.r) / 255, g = Double(self.g) / 255, b = Double(self.b) / 255
+        let maxC = max(r, g, b), minC = min(r, g, b), delta = maxC - minC
+        guard delta > 0 else { return (0, 0) }
+        var hue: Double
+        if maxC == r {
+            hue = (g - b) / delta
+        } else if maxC == g {
+            hue = (b - r) / delta + 2
+        } else {
+            hue = (r - g) / delta + 4
+        }
+        hue /= 6
+        if hue < 0 { hue += 1 }
+        return (hue, delta / maxC)
+    }
+}
+
+/// Conversions between unit HSB components (colour pickers) and QMK's 0-255 HSV.
+public enum QMKColor {
+    public static func hueSaturation(fromUnitHue hue: Double, saturation: Double) -> (hue: UInt8, saturation: UInt8) {
+        // Nearest step, wrapping 256 back to 0: the exact inverse of RGB(hue:saturation:value:).
+        (UInt8(Int((max(0, min(1, hue)) * 256).rounded()) % 256), UInt8(max(0, min(255, (saturation * 255).rounded()))))
+    }
+}

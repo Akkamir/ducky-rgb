@@ -107,4 +107,48 @@ final class LightingControllerTests: XCTestCase {
         await waitUntil { !fake.hostMode }
         XCTAssertFalse(controller.hostMode)
     }
+
+    func testTransientWriteErrorKeepsConnection() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        fake.throwNext(.setBase, .notConnected)
+        controller.setBase(BaseSettings(effectID: 3))
+        await waitUntil { controller.lastError != nil }
+        XCTAssertEqual(controller.connection, .connected)
+    }
+
+    func testRefreshIfPresentRecoversAfterFailedStart() async {
+        let fake = FakeKeyboard()
+        fake.throwNext(.ping, .timeout)
+        let controller = LightingController(transport: fake, saveDelay: 0.1)
+        controller.start()
+        await waitUntil { controller.lastError != nil }
+        XCTAssertEqual(controller.connection, .disconnected)
+        controller.refreshIfPresent()
+        await waitUntil { controller.connection == .connected }
+        XCTAssertEqual(controller.connection, .connected)
+    }
+
+    func testSuccessfulEditClearsError() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        fake.failNext(.setBase, with: .badArgument)
+        controller.setBase(BaseSettings(effectID: 3))
+        await waitUntil { controller.lastError != nil }
+        controller.setBase(BaseSettings(effectID: 4))
+        await waitUntil { controller.lastError == nil }
+        XCTAssertNil(controller.lastError)
+    }
+
+    func testFlushPendingSaveWritesImmediately() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake, saveDelay: 60)
+        controller.setBase(BaseSettings(effectID: 6))
+        var flushed = false
+        controller.flushPendingSave { flushed = true }
+        await waitUntil { flushed }
+        XCTAssertTrue(flushed)
+        XCTAssertEqual(fake.savedBase?.effectID, 6)
+        XCTAssertEqual(controller.saveState, .saved)
+    }
 }

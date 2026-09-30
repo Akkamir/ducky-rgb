@@ -24,6 +24,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppModel.shared.controller.start()
         }
     }
+
+    /// Writes a pending edit to the keyboard before quitting (the debounced save may not have run yet).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        var replied = false
+        let reply = {
+            guard !replied else { return }
+            replied = true
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        MainActor.assumeIsolated {
+            AppModel.shared.controller.flushPendingSave { reply() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { reply() }
+        return .terminateLater
+    }
 }
 
 @main

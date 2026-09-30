@@ -77,6 +77,34 @@ public final class LightingController {
                         state: try client.state(), overlay: try client.overlay(ledCount: info.ledCount))
     }
 
+    /// Refreshes when the keyboard is plugged in, whatever the last known state (recovers after a
+    /// failed start or a transient write error).
+    public func refreshIfPresent() {
+        if transport.isConnected { refresh() }
+    }
+
+    /// Saves now if a save is pending (used before quitting), then calls `completion`.
+    public func flushPendingSave(completion: @escaping @MainActor () -> Void) {
+        guard saveState == .pending, canControl else {
+            completion()
+            return
+        }
+        editGeneration += 1 // cancels the scheduled save
+        let generation = editGeneration
+        queue.async { [client] in
+            let result = Result { try client.save() }
+            Task { @MainActor [weak self] in
+                if let self, generation == self.editGeneration {
+                    switch result {
+                    case .success: self.saveState = .saved
+                    case .failure(let error): self.saveState = .failed(Self.describe(error))
+                    }
+                }
+                completion()
+            }
+        }
+    }
+
     /// Re-reads everything from the keyboard.
     public func refresh() {
         queue.async { [client] in
@@ -161,7 +189,10 @@ public final class LightingController {
 
     private func edit(_ work: @escaping @Sendable (KeyboardClient) throws -> Void) {
         queue.async { [client] in
-            do { try work(client) } catch {
+            do {
+                try work(client)
+                Task { @MainActor [weak self] in self?.lastError = nil }
+            } catch {
                 Task { @MainActor [weak self] in self?.report(error) }
             }
         }
@@ -197,7 +228,8 @@ public final class LightingController {
 
     private func report(_ error: Error) {
         lastError = Self.describe(error)
-        if case DuckyError.notConnected = error { connection = .disconnected }
+        // A failed write while the device is still plugged in is not a disconnection.
+        if case DuckyError.notConnected = error, !transport.isConnected { connection = .disconnected }
     }
 
     public nonisolated static func describe(_ error: Error) -> String {

@@ -127,8 +127,9 @@ sélecteur d'effet, « Ouvrir l'éditeur… », « Réglages… », « Quitter �
   de fonctionner en RAM.
 - Pendant un effacement de secteur, le CPU est suspendu : un bref gel de l'éclairage au moment d'une sauvegarde est
   possible (acceptable).
-- Le driver EFL active l'horloge ISP via un masque d'AHBCLK écrit dans APBCLK ; l'horloge ISP étant active par défaut
-  au reset, à vérifier sur le matériel.
+- Le driver EFL applique le masque AHBCLK `ISP_EN` (bit 2) au registre APBCLK, où le bit 2 est `TMR0_EN` : chaque arrêt
+  du driver (fin de chaque écriture EEPROM) coupe l'horloge de TIMER0. Le rafraîchissement des LEDs utilise donc TIMER1.
+  L'horloge ISP elle-même est active par défaut au reset (à confirmer sur le matériel).
 - Flasher le firmware v2 nécessite le user (touche D au branchement).
 
 ## 6. Tests

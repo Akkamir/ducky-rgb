@@ -63,4 +63,15 @@ final class ProtocolTests: XCTestCase {
     }
 
     private func zeros(_ n: Int) -> [UInt8] { [UInt8](repeating: 0, count: n) }
+
+    func testBaseColourRoundTripsEveryHue() {
+        for saturation in [UInt8(255), 128] {
+            for hue in 0...255 {
+                let rgb = RGB(hue: UInt8(hue), saturation: saturation, value: 255)
+                let unit = rgb.unitHueSaturation
+                let back = QMKColor.hueSaturation(fromUnitHue: unit.hue, saturation: unit.saturation)
+                XCTAssertEqual(back.hue, UInt8(hue), "hue \(hue) sat \(saturation)")
+            }
+        }
+    }
 }

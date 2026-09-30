@@ -42,7 +42,7 @@ struct MainWindow: View {
             case .settings: SettingsView()
             }
         }
-        .onAppear { if controller.canControl { controller.refresh() } }
+        .onAppear { controller.refreshIfPresent() }
     }
 
     private var selection: Binding<MainSection?> {

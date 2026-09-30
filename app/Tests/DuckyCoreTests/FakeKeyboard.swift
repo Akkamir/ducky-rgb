@@ -9,6 +9,9 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
     private var connected: Bool
     private var log: [Command] = []
     private var failures: [Command: Status] = [:]
+    private var thrownErrors: [Command: DuckyError] = [:]
+    /// Rewrites replies before they are returned (simulates corrupted or late replies).
+    var replyFilter: ((Command, [UInt8]) -> [UInt8])?
 
     let version: UInt8
     let effectIDs: [UInt8]
@@ -42,7 +45,18 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
         lock.withLock { failures[command] = status }
     }
 
+    /// Makes the next exchange of `command` throw `error` (e.g. a failed write while still plugged in).
+    func throwNext(_ command: Command, _ error: DuckyError) {
+        lock.withLock { thrownErrors[command] = error }
+    }
+
     func exchange(_ report: [UInt8], timeout: TimeInterval) throws -> [UInt8] {
+        let reply = try respond(to: report)
+        guard let command = Command(rawValue: report[0]), let replyFilter else { return reply }
+        return replyFilter(command, reply)
+    }
+
+    private func respond(to report: [UInt8]) throws -> [UInt8] {
         try lock.withLock {
             guard connected else { throw DuckyError.notConnected }
             var out = [UInt8](repeating: 0, count: 32)
@@ -57,6 +71,7 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
             }
             guard let command = Command(rawValue: report[0]) else { return fail(.unknownCommand) }
             log.append(command)
+            if let error = thrownErrors.removeValue(forKey: command) { throw error }
             if let status = failures.removeValue(forKey: command) { return fail(status) }
             if version < 2 && report[0] >= 0x10 { return fail(.unknownCommand) }
             let a = report

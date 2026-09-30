@@ -28,6 +28,7 @@ public final class KeyboardClient: @unchecked Sendable {
         var ids: [UInt8] = []
         while ids.count < count {
             let page = try DuckyProtocol.decodeEffects(send(DuckyProtocol.request(.getEffects, [UInt8(ids.count)])))
+            guard page.first == ids.count else { throw DuckyError.malformedReply } // late reply to another page
             guard !page.ids.isEmpty else { break }
             ids += page.ids
         }
@@ -46,6 +47,7 @@ public final class KeyboardClient: @unchecked Sendable {
         var colors: [RGB?] = []
         while colors.count < ledCount {
             let page = try DuckyProtocol.decodeOverlay(send(DuckyProtocol.request(.getOverlay, [UInt8(colors.count)])))
+            guard page.first == colors.count else { throw DuckyError.malformedReply } // late reply to another page
             guard !page.colors.isEmpty else { break }
             colors += page.colors
         }

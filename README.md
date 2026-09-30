@@ -31,7 +31,7 @@ against the One 2 Mini firmware and an earlier QMK driver for that board.
 
 Refresh sequence (per row): for each of the 15 columns, shift 16 bits MSB first on the three data
 lines with LE high over the last DCLK edge (data latch); then 2 DCLKs, LE high over 3 DCLKs (global
-latch); then switch the next row on. The QMK driver runs it from TIMER0 every 512 us.
+latch); then switch the next row on. The QMK driver runs it from a hardware timer every 512 us (TIMER1 in firmware v2: the NUC123 flash driver clears the TIMER0 clock after every flash write).
 
 The NUC123 (AN) USB driver exposes only two endpoints, so `hostrgb` shares the keyboard endpoint
 (`KEYBOARD_SHARED_EP`) and uses a single endpoint number for raw HID IN and OUT.

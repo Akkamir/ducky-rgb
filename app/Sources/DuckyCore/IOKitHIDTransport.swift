@@ -1,8 +1,9 @@
 import Foundation
 import IOKit.hid
 
-/// Raw HID connection through IOHIDManager. Device callbacks run on the main run loop; `exchange`
-/// blocks a background thread until the matching reply arrives.
+/// Raw HID connection through IOHIDManager. Device and report callbacks run on a private dispatch
+/// queue, so replies keep arriving while the main run loop tracks a slider or a window resize;
+/// `exchange` blocks its caller until the matching reply arrives.
 public final class IOKitHIDTransport: HIDTransport, @unchecked Sendable {
     public static let vendorID = 0x445B
     public static let productID = 0x07AE
@@ -17,14 +18,10 @@ public final class IOKitHIDTransport: HIDTransport, @unchecked Sendable {
     private var device: IOHIDDevice?
     private var inbox: [[UInt8]] = []
     private let arrival = DispatchSemaphore(value: 0)
-    private let inputBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 64)
+    private let callbackQueue = DispatchQueue(label: "ducky-rgb.hid-callbacks")
     private var started = false
 
     public init() {}
-
-    deinit {
-        inputBuffer.deallocate()
-    }
 
     public func start() {
         guard !started else { return }
@@ -45,20 +42,21 @@ public final class IOKitHIDTransport: HIDTransport, @unchecked Sendable {
             guard let context else { return }
             Unmanaged<IOKitHIDTransport>.fromOpaque(context).takeUnretainedValue().detach(device)
         }, context)
-        IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
-        IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
-    }
-
-    private func attach(_ newDevice: IOHIDDevice) {
-        guard IOHIDDeviceOpen(newDevice, IOOptionBits(kIOHIDOptionsTypeNone)) == kIOReturnSuccess else { return }
-        let context = Unmanaged.passUnretained(self).toOpaque()
-        IOHIDDeviceRegisterInputReportCallback(newDevice, inputBuffer, 64, { context, _, _, _, _, report, length in
+        // With a dispatch queue, callbacks must be registered on the manager before activation;
+        // the manager opens matched devices itself and reports their input here.
+        IOHIDManagerRegisterInputReportCallback(manager, { context, _, _, _, _, report, length in
             guard let context else { return }
             let bytes = Array(UnsafeBufferPointer(start: report, count: length))
             Unmanaged<IOKitHIDTransport>.fromOpaque(context).takeUnretainedValue().receive(bytes)
         }, context)
+        IOHIDManagerSetDispatchQueue(manager, callbackQueue)
+        IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        IOHIDManagerActivate(manager)
+    }
+
+    private func attach(_ newDevice: IOHIDDevice) {
         lock.withLock { device = newDevice }
-        onConnectionChange?(true)
+        notify(true)
     }
 
     private func detach(_ oldDevice: IOHIDDevice) {
@@ -67,7 +65,12 @@ public final class IOKitHIDTransport: HIDTransport, @unchecked Sendable {
             device = nil
             return true
         }
-        if removed { onConnectionChange?(false) }
+        if removed { notify(false) }
+    }
+
+    private func notify(_ connected: Bool) {
+        let callback = onConnectionChange
+        DispatchQueue.main.async { callback?(connected) }
     }
 
     private func receive(_ report: [UInt8]) {

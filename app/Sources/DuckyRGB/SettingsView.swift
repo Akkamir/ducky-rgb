@@ -27,8 +27,7 @@ struct SettingsView: View {
                     LabeledContent("Effets", value: "\(info.effectCount)")
                     LabeledContent("Mémoire persistante", value: info.persistent ? "Oui" : "Non")
                 }
-                Button("Relire l'état du clavier") { controller.refresh() }
-                    .disabled(controller.connection == .disconnected)
+                Button("Relire l'état du clavier") { controller.refreshIfPresent() }
             }
         }
         .formStyle(.grouped)

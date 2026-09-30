@@ -137,8 +137,7 @@ struct BaseControls: View {
             set: { color in
                 guard let ns = NSColor(color).usingColorSpace(.sRGB) else { return }
                 var base = controller.base
-                base.hue = UInt8(max(0, min(255, (ns.hueComponent * 256).rounded(.down))))
-                base.saturation = UInt8(max(0, min(255, (ns.saturationComponent * 255).rounded())))
+                (base.hue, base.saturation) = QMKColor.hueSaturation(fromUnitHue: ns.hueComponent, saturation: ns.saturationComponent)
                 controller.setBase(base)
             }
         )

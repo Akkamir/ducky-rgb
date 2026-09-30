@@ -39,7 +39,7 @@ struct MenuContent: View {
         .buttonStyle(.borderless)
         .padding(14)
         .frame(width: 300)
-        .onAppear { if controller.canControl { controller.refresh() } }
+        .onAppear { controller.refreshIfPresent() }
     }
 
     private func open(_ target: MainSection) {

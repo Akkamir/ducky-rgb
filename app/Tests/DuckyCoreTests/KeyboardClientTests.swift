@@ -48,4 +48,28 @@ final class KeyboardClientTests: XCTestCase {
             XCTAssertEqual(error as? DuckyError, .notConnected)
         }
     }
+
+    func testOverlayRejectsMisalignedPage() {
+        let fake = FakeKeyboard()
+        fake.replyFilter = { command, reply in
+            guard command == .getOverlay, reply[2] == 7 else { return reply }
+            var late = reply
+            late[2] = 0 // a late reply to the first page arriving for the second one
+            return late
+        }
+        XCTAssertThrowsError(try KeyboardClient(transport: fake).overlay(ledCount: 68)) { error in
+            XCTAssertEqual(error as? DuckyError, .malformedReply)
+        }
+    }
+
+    func testEffectsRejectsMisalignedPage() {
+        let fake = FakeKeyboard(effectIDs: Array(1...30))
+        fake.replyFilter = { command, reply in
+            guard command == .getEffects, reply[2] == 28 else { return reply }
+            var late = reply
+            late[2] = 0
+            return late
+        }
+        XCTAssertThrowsError(try KeyboardClient(transport: fake).effects(count: 30))
+    }
 }
