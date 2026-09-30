@@ -112,7 +112,7 @@ follow; the reply echoes the command with byte 1 = status (0 ok, 1 unknown comma
 | `0x17` save | `[0x17]` | writes the base and the per-key colours to flash |
 
 Host colours are never saved. Effects 1-14 are QMK's; 15 is the typing heatmap over the base colour,
-16 the typing heatmap over the per-key colours. Details: `docs/superpowers/specs/2026-09-30-ducky-rgb-app-design.md`.
+16 the typing heatmap over the per-key colours.
 
 ## macOS app (v1, firmware v2 required)
 
