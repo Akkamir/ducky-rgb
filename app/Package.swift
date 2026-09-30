@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "DuckyRGB",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("14.2")],
     products: [
         .executable(name: "DuckyRGB", targets: ["DuckyRGB"]),
         .library(name: "DuckyCore", targets: ["DuckyCore"]),
