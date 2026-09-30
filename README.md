@@ -100,6 +100,23 @@ with byte 1 = status (0 ok, `0xFF` error).
 
 Host colours are not persisted: after a replug the keyboard shows its saved effect again.
 
+## macOS app (v1, firmware v2 required)
+
+`app/` is a native SwiftUI app: a menu bar extra (presets, on/off, brightness, speed, effect) and a
+window with a keyboard editor (base effect and per-key colours with brush/eraser), a preset library
+and settings (launch at login, Dock icon). Edits reach the keyboard immediately and are saved in the
+keyboard's flash 2 s after the last change, so the lighting survives a replug with the app closed.
+
+```sh
+cd app
+swift test                 # protocol, layout, presets, controller (simulated keyboard)
+scripts/bundle.sh          # builds app/build/Ducky RGB.app (ad hoc signed)
+open "build/Ducky RGB.app"
+```
+
+It needs the firmware v2 `hostrgb` keymap (protocol v2 + wear-leveled EEPROM). The CLI's `info`,
+`state`, `base`, `paint`, `unpaint`, `clear-overlay` and `save` commands exercise the same protocol.
+
 ## Known limitations
 
 - ISO layout only (no `rgb_matrix` layout for the ANSI variant yet).
