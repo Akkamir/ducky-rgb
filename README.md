@@ -1,18 +1,127 @@
 # ducky-rgb
 
-Per-key RGB control of a **Ducky One 2 SF (DKON1967ST)** from macOS.
+Control the lights of a **Ducky One 2 SF** keyboard from your Mac: pick colours and effects, paint
+individual keys, save your favourite looks, and let the keyboard dance to the music you play.
 
-The stock Ducky firmware accepts no lighting commands from the host (its only host-to-device
-report is the 1-byte keyboard LED report), so this project replaces it with QMK:
+Out of the box, this keyboard's lights can only be changed with key combinations on the keyboard
+itself; there is no Mac app, and the keyboard ignores the computer. This project gives it a new
+brain (open-source firmware) that listens to the Mac, plus a small Mac app to drive it.
+
+## What you get
+
+- **A menu bar app**: presets in one click, on/off, brightness, speed, effect.
+- **A keyboard editor**: choose a background effect, then paint any key in any colour.
+- **Presets**: built-in looks (rainbow, soft white breathing, night, gaming WASD keys, ocean
+  heatmap...) and your own.
+- **Music mode**: the keyboard becomes an equaliser that follows whatever your Mac plays, headphones
+  included, with five colour palettes. When the music stops, your normal lighting fades back in.
+- **Typing heatmaps**: keys light up as you type them.
+- **It sticks**: your lighting is stored inside the keyboard, so it stays the same after unplugging,
+  on any computer, even with the app closed.
+
+## Is it for me?
+
+| You need | Details |
+|---|---|
+| A Ducky One 2 SF, model **DKON1967ST**, **ISO** layout | The model number is on the label under the keyboard. ISO = the European layout with a tall Enter key (UK, French AZERTY, German...). The ANSI (US) version is not supported yet. |
+| A Mac with **macOS 14.2** or later | Music mode relies on a macOS 14.2 feature. |
+| About 15 minutes and some comfort with the Terminal | You install two tools and copy a few commands. |
+| Optional: a Windows PC | Only to go back to Ducky's original firmware one day. |
+
+**Is it safe?** Updating the keyboard replaces its main program, never the tiny recovery program
+(bootloader) that runs before it. If anything goes wrong, you can always start over by holding **D**
+while plugging the keyboard in, and Ducky's official updater brings back the original firmware.
+As with any firmware change, you do it at your own risk.
+
+## Getting started
+
+### 1. Install the tools
+
+Install the Xcode Command Line Tools (for the app) and Rust (for the flashing tool), then the
+flashing tool itself:
+
+```sh
+xcode-select --install
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+cargo install --git https://github.com/elfmimi/nu-isp-rs --rev 9c763dd nu-isp-cli
+```
+
+### 2. Put the new firmware on the keyboard
+
+```sh
+git clone https://github.com/Akkamir/ducky-rgb
+cd ducky-rgb
+```
+
+1. Unplug the keyboard.
+2. Hold the **D** key, plug the keyboard back in, then release **D**. The keyboard stops typing:
+   it is waiting for its new firmware.
+3. Run:
+
+   ```sh
+   nu-isp-cli flash builds/ducky_one2sf_1967st_iso_hostrgb.bin
+   ```
+
+4. After a few seconds the keyboard restarts and types normally again.
+
+Good to know: macOS sees the updated keyboard as a new device, so modifier key remaps made in System
+Settings (for example Cmd and Option swapped) must be done again.
+
+### 3. Install the app
+
+```sh
+cd app
+scripts/bundle.sh
+open "build/Ducky RGB.app"
+```
+
+A keyboard icon appears in the menu bar. Drag `app/build/Ducky RGB.app` to your Applications folder
+to keep it. The first time you turn on music mode, macOS asks for permission to capture system
+audio: accept it.
+
+## Using it
+
+- **Menu bar icon**: presets, on/off, brightness, speed, effect, and music mode (on/off, palette).
+- **"Ouvrir l'éditeur…"** (Open editor): the background effect and its colour, then a brush and an
+  eraser to paint keys. The colour setting says what it changes for the chosen effect.
+- **Presets**: apply, rename, duplicate, delete, or save the current look as a new preset.
+- **Saving**: changes show on the keyboard at once and are stored in the keyboard two seconds later.
+- **Music mode** takes over the lights only while sound plays. After 3 seconds of silence, while the
+  editor is open, or when you quit the app, your saved lighting fades back in. Music mode never
+  changes what is stored in the keyboard.
+
+The app is in French for now.
+
+### Going back to Ducky's original firmware
+
+Run Ducky's official updater on a Windows PC (hold D, plug in, click OK):
+`https://cdn.shopify.com/s/files/1/0728/4382/1295/files/Ducky_One2_SF_V1.12.exe`
+(SHA-256 `b58cd7dd7ee87e3962b317627baa9c7416d448c2280df0ec70b5177700998ee5`).
+
+## Known limitations
+
+- ISO layout only (no `rgb_matrix` layout for the ANSI variant yet).
+- Every firmware update erases the lighting stored in the keyboard: apply a preset again afterwards.
+- The Fn + key shortcut that normally enters update mode (`QK_BOOT`) only restarts the keyboard; hold
+  D while plugging in instead.
+- LED power (PD5) is not cut during USB suspend; the LEDs are only blanked.
+
+---
+
+# Technical details
+
+## Repository layout
 
 - `firmware/qmk_firmware`: submodule pointing to the `ducky-sf-rgb` branch of a QMK fork, which adds
   an RGB matrix driver for the keyboard's LED drivers and a `hostrgb` keymap with a raw HID protocol
-  and a lighting setup saved in flash;
-- `host/ducky_rgb.py`: a small CLI that talks to that keymap over raw HID;
-- `app/`: a native macOS app (menu bar + editor, presets, audio-reactive equaliser).
+  and a lighting setup saved in flash (wear-leveled EEPROM emulation).
+- `builds/`: firmware binaries validated on hardware.
+- `app/`: the macOS app (SwiftUI, Swift Package Manager).
+- `host/ducky_rgb.py`: a command-line tool speaking the same protocol.
+- `tools/detect.py`: reports whether the keyboard is on the stock firmware, in the bootloader, or absent.
 
-Tested on hardware (ISO board, stock firmware V1.12 replaced): colours, per-key mapping, gradients,
-typing, saved setup across replugs, the app and its audio mode.
+Why a new firmware: the stock Ducky firmware accepts no lighting commands from the host (its only
+host-to-device report is the 1-byte keyboard LED report).
 
 ## Hardware notes
 
@@ -33,14 +142,18 @@ against the One 2 Mini firmware and an earlier QMK driver for that board.
 
 Refresh sequence (per row): for each of the 15 columns, shift 16 bits MSB first on the three data
 lines with LE high over the last DCLK edge (data latch); then 2 DCLKs, LE high over 3 DCLKs (global
-latch); then switch the next row on. The QMK driver runs it from a hardware timer every 512 us (TIMER1 in firmware v2: the NUC123 flash driver clears the TIMER0 clock after every flash write).
+latch); then switch the next row on. The QMK driver runs it from a hardware timer every 512 us
+(TIMER1: the NUC123 flash driver clears the TIMER0 clock after every flash write).
 
 The NUC123 (AN) USB driver exposes only two endpoints, so `hostrgb` shares the keyboard endpoint
 (`KEYBOARD_SHARED_EP`) and uses a single endpoint number for raw HID IN and OUT.
 
-## Build and flash
+The saved setup lives in the last 2 KB of the 64 KB APROM (0xF800-0xFFFF). LDROM and CONFIG are never
+written.
 
-Requires the QMK CLI and [`nu-isp-cli`](https://github.com/elfmimi/nu-isp-rs).
+## Building the firmware
+
+Requires the QMK CLI (`brew install qmk/qmk/qmk && qmk setup`) and `nu-isp-cli` (see above).
 
 ```sh
 git clone --recursive https://github.com/Akkamir/ducky-rgb
@@ -50,23 +163,13 @@ qmk compile -kb ducky/one2sf/1967st/iso -km hostrgb
 nu-isp-cli flash ducky_one2sf_1967st_iso_hostrgb.bin
 ```
 
-Flashing rewrites the whole APROM, including the saved lighting setup: re-apply it afterwards.
+`nu-isp-cli` only rewrites APROM (including the saved lighting setup); the chip always boots its
+LDROM bootloader first, so a bad flash is recoverable by holding D while plugging in.
 
-`builds/` holds the binaries that were validated on hardware:
-
-| File | SHA-256 |
+| Binary in `builds/` | SHA-256 |
 |---|---|
 | `ducky_one2sf_1967st_iso_hostrgb.bin` (RGB, raw HID protocol v2, saved setup) | `8273a6d68ce0309c61a7b9f85282dd7b3eac9ddf5f921d9d6bd38b2c7d14ecb1` |
 | `ducky_one2sf_1967st_iso_default.bin` (upstream QMK, no RGB) | `0aa26c0664ba77444df447613c159ad47ac65f7963dbeab94df55d0d7bf003bb` |
-
-`nu-isp-cli` only rewrites APROM; the chip always boots its LDROM bootloader first, so a bad flash is
-recoverable by holding D while plugging in.
-
-### Back to the stock firmware
-
-Run Ducky's official updater on Windows (hold D, plug in, click OK):
-`https://cdn.shopify.com/s/files/1/0728/4382/1295/files/Ducky_One2_SF_V1.12.exe`
-(SHA-256 `b58cd7dd7ee87e3962b317627baa9c7416d448c2280df0ec70b5177700998ee5`).
 
 ## CLI
 
@@ -83,14 +186,15 @@ python3 -m venv .venv && .venv/bin/pip install hidapi
 ./ducky-rgb text "PD" --ribbon --rainbow --speed 3   # endless ribbon, Ctrl-C to stop
 ```
 
+`info`, `state`, `base`, `paint`, `unpaint`, `clear-overlay` and `save` use the saved-setup commands
+of the protocol.
+
 Scrolling text uses a 3x5 font on the 5 key rows at ~38 frames/s. Three renderings were compared on
 the board: the default maps text pixels onto the switch matrix (row k-th key = column k), which is the
 most readable; letters lean slightly because the rows are staggered. `--straight` samples the physical
 key positions instead and `--smooth` anti-aliases by key coverage; both read worse on hardware.
 
-`tools/detect.py` reports whether the keyboard is on the stock firmware, in the bootloader, or absent.
-
-### Raw HID protocol
+## Raw HID protocol
 
 Protocol v2: 32-byte reports on usage page `0xFF60` / usage `0x61`. Byte 0 is the command, arguments
 follow; the reply echoes the command with byte 1 = status (0 ok, 1 unknown command, 2 bad argument,
@@ -114,33 +218,16 @@ follow; the reply echoes the command with byte 1 = status (0 ok, 1 unknown comma
 Host colours are never saved. Effects 1-14 are QMK's; 15 is the typing heatmap over the base colour,
 16 the typing heatmap over the per-key colours.
 
-## macOS app (v1, firmware v2 required)
+## App internals
 
-`app/` is a native SwiftUI app: a menu bar extra (presets, on/off, brightness, speed, effect) and a
-window with a keyboard editor (base effect and per-key colours with brush/eraser), a preset library
-and settings (launch at login, Dock icon). Edits reach the keyboard immediately and are saved in the
-keyboard's flash 2 s after the last change, so the lighting survives a replug with the app closed.
+`app/` is a Swift package: `DuckyCore` (protocol, IOKit HID transport, layout, presets, lighting
+controller, audio analysis and capture) and the `DuckyRGB` SwiftUI executable. Edits are sent at once
+and saved 2 s after the last change. Music mode captures system audio with a Core Audio process tap,
+analyses 15 log-spaced bands (40 Hz to 16 kHz) with automatic gain, and streams frames through the
+host mode at ~30 frames/s; frames are never saved.
 
 ```sh
 cd app
 swift test                 # protocol, layout, presets, controller, audio (simulated keyboard)
 scripts/bundle.sh          # builds app/build/Ducky RGB.app (ad hoc signed)
-open "build/Ducky RGB.app"
 ```
-
-**Audio mode** (menu bar, macOS 14.2+): while armed and the Mac plays sound (headphones included),
-the keyboard shows a 15-band equaliser of the system audio, captured with a Core Audio process tap
-(macOS asks for the audio capture permission on first use). Five palettes: classic, ocean, sunset,
-neon, fire. After 3 s of silence, while the editor window is active, or when disarmed, the keyboard
-shows the saved lighting again. Audio frames go through the host mode and are never saved.
-
-It needs the firmware v2 `hostrgb` keymap (protocol v2 + wear-leveled EEPROM). The CLI's `info`,
-`state`, `base`, `paint`, `unpaint`, `clear-overlay` and `save` commands exercise the same protocol.
-
-## Known limitations
-
-- ISO layout only (no `rgb_matrix` layout for the ANSI variant yet).
-- LED power (PD5) is not cut during USB suspend; rgb_matrix only blanks the LEDs.
-- `QK_BOOT` resets the keyboard instead of entering the bootloader; hold D while plugging in.
-- macOS stores modifier remaps per USB VID/PID: QMK uses `445B:07AE`, so remaps made for the stock
-  keyboard must be redone.
