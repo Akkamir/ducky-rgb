@@ -21,10 +21,27 @@ public enum EffectCatalog {
         Effect(id: 13, name: "Heatmap de frappe"),
         Effect(id: 14, name: "Bande de saturation"),
         Effect(id: 15, name: "Heatmap sur fond"),
+        Effect(id: 16, name: "Heatmap sur couleurs perso"),
     ]
 
     public static func name(for id: UInt8) -> String {
         all.first { $0.id == id }?.name ?? "Effet \(id)"
+    }
+
+    /// What the base colour changes for an effect (checked against the QMK animations), or nil when the
+    /// effect ignores it (it picks its own colours).
+    public static func colorLabel(for id: UInt8) -> String? {
+        switch id {
+        case 1: return "Couleur des touches"
+        case 2: return "Couleur de la respiration"
+        case 3: return "Teinte de départ du dégradé"
+        case 7: return "Teinte de la vague"
+        case 10, 16: return "Couleur de la frappe"
+        case 11, 12: return "Teinte de départ des ondes"
+        case 14: return "Couleur de la bande"
+        case 15: return "Couleur du fond"
+        default: return nil // 4, 5, 6, 8, 9, 13: rainbow, random or fixed colours
+        }
     }
 
     /// Catalog entries for the ids a keyboard reports, keeping unknown ids visible.

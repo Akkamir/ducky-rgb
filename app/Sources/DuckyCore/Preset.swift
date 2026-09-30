@@ -67,6 +67,11 @@ extension Preset {
             Preset(id: builtInID(5), name: "Focus",
                    base: BaseSettings(enabled: false, effectID: 1, hue: 0, saturation: 0, brightness: 120, speed: 128),
                    overlay: overlay(["esc": white]), builtIn: true),
+            // The audio mode's ocean rows as a still background; typing heats keys in aqua, then foam white.
+            Preset(id: builtInID(6), name: "Océan heatmap",
+                   base: BaseSettings(enabled: true, effectID: 16, hue: 117, saturation: 255, brightness: 140, speed: 128),
+                   overlay: KeyboardLayout.keys.map { EqualiserPalette.ocean.rows[Int($0.y + $0.height - 1)] },
+                   builtIn: true),
         ]
     }()
 }

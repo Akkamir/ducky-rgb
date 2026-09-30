@@ -57,8 +57,13 @@ final class ProtocolTests: XCTestCase {
     }
 
     func testEffectCatalogNames() {
-        XCTAssertEqual(EffectCatalog.all.count, 15)
+        XCTAssertEqual(EffectCatalog.all.count, 16)
         XCTAssertEqual(EffectCatalog.name(for: 15), "Heatmap sur fond")
+        XCTAssertEqual(EffectCatalog.name(for: 16), "Heatmap sur couleurs perso")
+        XCTAssertEqual(EffectCatalog.colorLabel(for: 1), "Couleur des touches")
+        XCTAssertEqual(EffectCatalog.colorLabel(for: 15), "Couleur du fond")
+        XCTAssertEqual(EffectCatalog.colorLabel(for: 16), "Couleur de la frappe")
+        XCTAssertNil(EffectCatalog.colorLabel(for: 5)) // rainbow: the colour has no effect
         XCTAssertEqual(EffectCatalog.name(for: 1), "Couleur unie")
         XCTAssertEqual(EffectCatalog.name(for: 99), "Effet 99")
     }

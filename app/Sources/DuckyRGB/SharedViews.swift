@@ -95,8 +95,8 @@ struct BaseControls: View {
                     Text(effect.name).tag(effect.id)
                 }
             }
-            if showsColor {
-                ColorPicker("Couleur du fond", selection: baseColor, supportsOpacity: false)
+            if showsColor, let label = EffectCatalog.colorLabel(for: controller.base.effectID) {
+                ColorPicker(label, selection: baseColor, supportsOpacity: false)
             }
             LabeledContent("Luminosité") {
                 Slider(value: level(\.brightness), in: 0...200)

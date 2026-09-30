@@ -68,4 +68,17 @@ final class PresetStoreTests: XCTestCase {
         other.speed &+= 1
         XCTAssertFalse(preset.matches(base: other, overlay: preset.overlayColors()))
     }
+
+
+    func testOceanHeatmapPresetUsesTheAudioOceanRows() {
+        let preset = Preset.builtIns.first { $0.name == "Océan heatmap" }!
+        XCTAssertEqual(preset.base.effectID, 16)
+        XCTAssertTrue(preset.base.enabled)
+        let colors = preset.overlayColors()
+        XCTAssertTrue(colors.allSatisfy { $0 != nil })
+        let rows = EqualiserPalette.ocean.rows
+        XCTAssertEqual(colors[KeyboardLayout.index(named: "esc")!], rows[0])
+        XCTAssertEqual(colors[KeyboardLayout.index(named: "enter")!], rows[2])
+        XCTAssertEqual(colors[KeyboardLayout.index(named: "space")!], rows[4])
+    }
 }
