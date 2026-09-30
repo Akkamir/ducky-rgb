@@ -925,7 +925,8 @@ public final class AudioMode {
 
     /// One step: analyse the latest audio, then show an equaliser frame or the saved lighting.
     func tick(now: Date = Date()) {
-        guard isArmed, let analyzer else { return }
+        guard isArmed, let capture, let analyzer else { return }
+        analyzer.sampleRate = capture.sampleRate // follows an output device change
         let spectrum = analyzer.analyze()
         if isPaused {
             status = .paused
