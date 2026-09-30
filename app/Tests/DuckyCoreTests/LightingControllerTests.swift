@@ -162,4 +162,65 @@ final class LightingControllerTests: XCTestCase {
         await waitUntil { !fake.hostMode }
         XCTAssertFalse(fake.hostMode)
     }
+
+
+    func testLiveFramesUseHostModeWithoutSaving() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake, saveDelay: 0.1)
+        let frame = [RGB](repeating: RGB(255, 0, 0), count: 68)
+        controller.showLiveFrame(frame)
+        await waitUntil { fake.hostColors == frame }
+        XCTAssertTrue(fake.hostMode)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertFalse(fake.commands().contains(.save))
+        controller.endLiveFrames()
+        await waitUntil { !fake.hostMode }
+        XCTAssertFalse(fake.hostMode)
+        XCTAssertFalse(controller.showingLiveFrames)
+    }
+
+    func testLiveFramesAreCoalesced() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        for i in 0..<50 { controller.showLiveFrame([RGB](repeating: RGB(UInt8(i), 0, 0), count: 68)) }
+        await waitUntil { fake.hostColors.first == RGB(49, 0, 0) }
+        XCTAssertEqual(fake.hostColors.first, RGB(49, 0, 0))
+        XCTAssertLessThan(fake.commands().filter { $0 == .hostSet }.count, 50 * 8)
+    }
+
+    func testOwnLiveFramesDoNotShowCLIBanner() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        controller.showLiveFrame([RGB](repeating: .black, count: 68))
+        await waitUntil { fake.hostMode }
+        controller.refresh()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(controller.hostMode)
+    }
+
+    func testLiveFramesResumeAfterReconnect() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        controller.showLiveFrame([RGB](repeating: .black, count: 68))
+        await waitUntil { fake.hostMode }
+        fake.setConnected(false)
+        await waitUntil { controller.connection == .disconnected }
+        fake.hostMode = false // the keyboard restarted
+        fake.setConnected(true)
+        await waitUntil { controller.connection == .connected }
+        controller.showLiveFrame([RGB](repeating: .black, count: 68))
+        await waitUntil { fake.hostMode }
+        XCTAssertTrue(fake.hostMode)
+    }
+
+    func testFlushWaitsForQueuedWork() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        controller.showLiveFrame([RGB](repeating: .black, count: 68))
+        controller.endLiveFrames()
+        var flushed = false
+        controller.flushPendingSave { flushed = true }
+        await waitUntil { flushed }
+        XCTAssertFalse(fake.hostMode)
+    }
 }

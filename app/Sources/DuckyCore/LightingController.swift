@@ -26,6 +26,8 @@ public final class LightingController {
     public private(set) var effects: [Effect] = []
     public private(set) var info: KeyboardInfo?
     public private(set) var lastError: String?
+    /// True while the app streams live frames (audio mode) through the host mode.
+    public private(set) var showingLiveFrames = false
 
     public var canControl: Bool { connection == .connected }
 
@@ -34,6 +36,7 @@ public final class LightingController {
     private let queue = DispatchQueue(label: "ducky-rgb.hid")
     private let saveDelay: TimeInterval
     private var editGeneration = 0
+    private let liveFrame = LiveFrameSlot()
 
     public init(transport: HIDTransport, saveDelay: TimeInterval = 2) {
         self.transport = transport
@@ -50,6 +53,8 @@ public final class LightingController {
     }
 
     private func connectionChanged(_ connected: Bool) {
+        showingLiveFrames = false // a replugged keyboard starts without host mode
+        liveFrame.clear()
         if connected {
             refresh()
         } else {
@@ -86,7 +91,7 @@ public final class LightingController {
     /// Saves now if a save is pending (used before quitting), then calls `completion`.
     public func flushPendingSave(completion: @escaping @MainActor () -> Void) {
         guard saveState == .pending, canControl else {
-            completion()
+            queue.async { Task { @MainActor in completion() } } // after queued HID work
             return
         }
         editGeneration += 1 // cancels the scheduled save
@@ -125,7 +130,7 @@ public final class LightingController {
             self.info = info
             effects = EffectCatalog.effects(for: snapshot.effectIDs)
             base = state.base
-            hostMode = state.hostMode
+            hostMode = state.hostMode && !showingLiveFrames // our own live frames are not "the CLI"
             overlay = snapshot.overlay
             saveState = state.dirty ? .pending : .saved
             lastError = nil
@@ -180,6 +185,35 @@ public final class LightingController {
     public func releaseHostMode() {
         guard canControl else { return }
         hostMode = false
+        queue.async { [client] in
+            do { try client.setHostMode(false) } catch {
+                Task { @MainActor [weak self] in self?.report(error) }
+            }
+        }
+    }
+
+    /// Shows a live frame through the host mode (audio mode). Nothing is saved.
+    public func showLiveFrame(_ colors: [RGB]) {
+        guard canControl else { return }
+        let enableHostMode = !showingLiveFrames
+        showingLiveFrames = true
+        guard liveFrame.put(colors, enableHostMode: enableHostMode) else { return }
+        queue.async { [client, liveFrame] in
+            guard let next = liveFrame.take() else { return }
+            do {
+                if next.enableHostMode { try client.setHostMode(true) }
+                try client.sendHostFrame(next.frame)
+            } catch {
+                Task { @MainActor [weak self] in self?.report(error) }
+            }
+        }
+    }
+
+    /// Stops live frames: the keyboard shows the saved lighting again.
+    public func endLiveFrames() {
+        guard showingLiveFrames else { return }
+        showingLiveFrames = false
+        liveFrame.clear()
         queue.async { [client] in
             do { try client.setHostMode(false) } catch {
                 Task { @MainActor [weak self] in self?.report(error) }
@@ -244,6 +278,40 @@ public final class LightingController {
         case .status(let command, let status): return "Commande \(command) refusée (\(status))"
         case .outdatedFirmware(let version): return "Firmware v\(version) à mettre à jour"
         case nil: return error.localizedDescription
+        }
+    }
+}
+
+/// Holds the latest live frame until the HID queue sends it; older unsent frames are replaced.
+final class LiveFrameSlot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var frame: [RGB]?
+    private var enableHostMode = false
+
+    /// Stores the frame; returns true when no send is queued yet.
+    func put(_ colors: [RGB], enableHostMode enable: Bool) -> Bool {
+        lock.withLock {
+            let wasEmpty = frame == nil
+            frame = colors
+            enableHostMode = enableHostMode || enable
+            return wasEmpty
+        }
+    }
+
+    func take() -> (frame: [RGB], enableHostMode: Bool)? {
+        lock.withLock {
+            guard let colors = frame else { return nil }
+            let enable = enableHostMode
+            frame = nil
+            enableHostMode = false
+            return (colors, enable)
+        }
+    }
+
+    func clear() {
+        lock.withLock {
+            frame = nil
+            enableHostMode = false
         }
     }
 }
