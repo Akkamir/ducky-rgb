@@ -188,8 +188,12 @@ public final class LightingController {
     }
 
     private func edit(_ work: @escaping @Sendable (KeyboardClient) throws -> Void) {
+        // An edit in the app means the user wants to see it: take the LEDs back from the CLI's live mode.
+        let releaseHostMode = hostMode
+        hostMode = false
         queue.async { [client] in
             do {
+                if releaseHostMode { try client.setHostMode(false) }
                 try work(client)
                 Task { @MainActor [weak self] in self?.lastError = nil }
             } catch {

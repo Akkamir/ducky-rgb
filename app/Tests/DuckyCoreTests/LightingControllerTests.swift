@@ -151,4 +151,15 @@ final class LightingControllerTests: XCTestCase {
         XCTAssertEqual(fake.savedBase?.effectID, 6)
         XCTAssertEqual(controller.saveState, .saved)
     }
+
+    func testEditTakesLEDsBackFromHostMode() async {
+        let fake = FakeKeyboard()
+        fake.hostMode = true
+        let controller = await started(fake)
+        XCTAssertTrue(controller.hostMode)
+        controller.apply(Preset.builtIns[0])
+        XCTAssertFalse(controller.hostMode)
+        await waitUntil { !fake.hostMode }
+        XCTAssertFalse(fake.hostMode)
+    }
 }
