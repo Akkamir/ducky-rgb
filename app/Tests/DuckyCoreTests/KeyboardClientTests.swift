@@ -72,4 +72,13 @@ final class KeyboardClientTests: XCTestCase {
         }
         XCTAssertThrowsError(try KeyboardClient(transport: fake).effects(count: 30))
     }
+
+
+    func testSendHostFrame() throws {
+        let fake = FakeKeyboard()
+        let frame = (0..<68).map { RGB(UInt8($0), 0, 255 - UInt8($0)) }
+        try KeyboardClient(transport: fake).sendHostFrame(frame)
+        XCTAssertEqual(fake.commands().filter { $0 == .hostSet }.count, 8)
+        XCTAssertEqual(fake.hostColors, frame)
+    }
 }

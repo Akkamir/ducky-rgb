@@ -20,6 +20,7 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
     var savedBase: BaseSettings?
     var savedOverlay: [RGB?]?
     var hostMode = false
+    var hostColors = [RGB](repeating: .black, count: 68)
     var dirty = false
 
     init(version: UInt8 = 2, effectIDs: [UInt8] = Array(1...14), connected: Bool = true) {
@@ -81,7 +82,13 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
             case .hostMode:
                 hostMode = a[1] != 0
                 return reply()
-            case .hostSet, .hostFill:
+            case .hostSet:
+                let first = Int(a[1]), count = Int(a[2])
+                guard count <= 9, first + count <= 68 else { return fail(.badArgument) }
+                for i in 0..<count { hostColors[first + i] = RGB(a[3 + 3 * i], a[4 + 3 * i], a[5 + 3 * i]) }
+                return reply()
+            case .hostFill:
+                hostColors = [RGB](repeating: RGB(a[1], a[2], a[3]), count: 68)
                 return reply()
             case .getInfo:
                 return reply([2, 68, UInt8(effectIDs.count), 1])

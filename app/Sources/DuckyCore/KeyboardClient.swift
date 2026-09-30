@@ -74,4 +74,12 @@ public final class KeyboardClient: @unchecked Sendable {
     public func setHostMode(_ on: Bool) throws {
         try send(DuckyProtocol.request(.hostMode, [on ? 1 : 0]))
     }
+
+    /// Sends a whole live frame for the host mode, 9 LEDs per report.
+    public func sendHostFrame(_ colors: [RGB]) throws {
+        for first in stride(from: 0, to: colors.count, by: DuckyProtocol.hostLEDsPerReport) {
+            let chunk = colors[first..<min(first + DuckyProtocol.hostLEDsPerReport, colors.count)]
+            try send(DuckyProtocol.request(.hostSet, [UInt8(first), UInt8(chunk.count)] + chunk.flatMap { [$0.r, $0.g, $0.b] }))
+        }
+    }
 }

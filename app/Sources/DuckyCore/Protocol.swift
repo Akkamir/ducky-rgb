@@ -57,6 +57,7 @@ public enum DuckyProtocol {
     public static let version = 2
     public static let overlayPerReport = 7
     public static let effectsPerReport = 28
+    public static let hostLEDsPerReport = 9
 
     public static func request(_ command: Command, _ args: [UInt8] = []) -> [UInt8] {
         precondition(args.count < reportSize, "too many arguments")
