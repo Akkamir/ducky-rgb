@@ -30,6 +30,10 @@ public final class LightingController {
     public private(set) var showingLiveFrames = false
 
     public var canControl: Bool { connection == .connected }
+    /// The keyboard runs protocol v3 or later: agent indicators and Fn + agent key events.
+    public var supportsIndicators: Bool { canControl && (info?.version ?? 0) >= DuckyProtocol.indicatorsVersion }
+    /// Called when Fn + an agent key is pressed on the keyboard, with the slot (0 = Delete, 1 = Page Up, 2 = Page Down).
+    public var onAgentKey: (@MainActor (Int) -> Void)?
 
     private let transport: HIDTransport
     private let client: KeyboardClient
@@ -37,16 +41,25 @@ public final class LightingController {
     private let saveDelay: TimeInterval
     private var editGeneration = 0
     private let liveFrame = LiveFrameSlot()
+    private let indicatorRefresh: TimeInterval
+    private var indicators: [Indicator] = []
+    private var indicatorLoop: Task<Void, Never>?
 
-    public init(transport: HIDTransport, saveDelay: TimeInterval = 2) {
+    /// `indicatorRefresh`: how often indicators are sent again; the keyboard clears them after 5 s without news.
+    public init(transport: HIDTransport, saveDelay: TimeInterval = 2, indicatorRefresh: TimeInterval = 2) {
         self.transport = transport
         self.client = KeyboardClient(transport: transport)
         self.saveDelay = saveDelay
+        self.indicatorRefresh = indicatorRefresh
     }
 
     public func start() {
         transport.onConnectionChange = { [weak self] connected in
             Task { @MainActor in self?.connectionChanged(connected) }
+        }
+        transport.onEvent = { [weak self] report in
+            guard let slot = DuckyProtocol.agentKey(in: report) else { return }
+            Task { @MainActor in self?.onAgentKey?(slot) }
         }
         transport.start()
         if transport.isConnected { connectionChanged(true) }
@@ -138,6 +151,7 @@ public final class LightingController {
             lastError = nil
             connection = .connected
             if state.dirty { scheduleSave() }
+            if !indicators.isEmpty { sendIndicators() } // a replugged keyboard starts without them
         }
     }
 
@@ -189,6 +203,36 @@ public final class LightingController {
         hostMode = false
         queue.async { [client] in
             do { try client.setHostMode(false) } catch {
+                Task { @MainActor [weak self] in self?.report(error) }
+            }
+        }
+    }
+
+    /// Shows status LEDs above all the lighting (agent indicators); an empty list clears them. Nothing is saved.
+    public func setIndicators(_ new: [Indicator]) {
+        guard new != indicators else { return }
+        indicators = new
+        sendIndicators()
+        if new.isEmpty {
+            indicatorLoop?.cancel()
+            indicatorLoop = nil
+        } else if indicatorLoop == nil {
+            let interval = UInt64(indicatorRefresh * 1_000_000_000)
+            indicatorLoop = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: interval)
+                    guard !Task.isCancelled else { return }
+                    self?.sendIndicators() // keeps them alive on the keyboard
+                }
+            }
+        }
+    }
+
+    private func sendIndicators() {
+        guard supportsIndicators else { return }
+        let list = indicators
+        queue.async { [client] in
+            do { try client.setIndicators(list) } catch {
                 Task { @MainActor [weak self] in self?.report(error) }
             }
         }

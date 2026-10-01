@@ -80,4 +80,21 @@ final class ProtocolTests: XCTestCase {
             }
         }
     }
+
+
+    func testSetIndicatorsEncoding() {
+        let report = DuckyProtocol.setIndicators([
+            Indicator(led: 14, color: RGB(1, 2, 3), breathing: false),
+            Indicator(led: 28, color: RGB(4, 5, 6), breathing: true),
+        ])
+        XCTAssertEqual(Array(report.prefix(13)), [0x18, 2, 14, 1, 2, 3, 0, 28, 4, 5, 6, 1, 0])
+        XCTAssertEqual(Array(DuckyProtocol.setIndicators([]).prefix(2)), [0x18, 0])
+    }
+
+    func testAgentKeyEventDecoding() {
+        XCTAssertEqual(DuckyProtocol.agentKey(in: [0x30, 0xA5, 2] + zeros(29)), 2)
+        XCTAssertNil(DuckyProtocol.agentKey(in: [0x18, 0xA5, 0] + zeros(29)))
+        XCTAssertNil(DuckyProtocol.agentKey(in: [0x30, 0xA5, 7] + zeros(29)))
+        XCTAssertNil(DuckyProtocol.agentKey(in: [0x30, 1, 0] + zeros(29))) // a reply to an unknown 0x30 command
+    }
 }

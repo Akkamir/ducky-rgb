@@ -16,6 +16,9 @@ brain (open-source firmware) that listens to the Mac, plus a small Mac app to dr
 - **Music mode**: the keyboard becomes an equaliser that follows whatever your Mac plays, headphones
   included, with five colour palettes. When the music stops, your normal lighting fades back in.
 - **Typing heatmaps**: keys light up as you type them.
+- **Claude Code status lights**: Delete, Page Up and Page Down show up to three Claude Code sessions
+  (idle, thinking, waiting for you, answered, error), on top of any lighting; Fn + the key brings that
+  session's Terminal tab to the front.
 - **It sticks**: your lighting is stored inside the keyboard, so it stays the same after unplugging,
   on any computer, even with the app closed.
 
@@ -77,7 +80,14 @@ open "build/Ducky RGB.app"
 
 A keyboard icon appears in the menu bar. Drag `app/build/Ducky RGB.app` to your Applications folder
 to keep it. The first time you turn on music mode, macOS asks for permission to capture system
-audio: accept it.
+audio: accept it. If your menu bar is full (MacBooks with a notch hide the extra icons), turn on
+"Afficher l'icône dans le Dock" in the app's settings, or open the app from the Dock.
+
+### 4. Optional: Claude Code status lights
+
+In the app window, open **Agents**, click **Installer** (adds hooks to `~/.claude/settings.json`, keeping
+a copy of the original as `settings.json.ducky-backup`), then **Autoriser Terminal** and accept the
+macOS prompt. If you move the app, click **Réinstaller**.
 
 ## Using it
 
@@ -89,6 +99,11 @@ audio: accept it.
 - **Music mode** takes over the lights only while sound plays. After 3 seconds of silence, while the
   editor is open, or when you quit the app, your saved lighting fades back in. Music mode never
   changes what is stored in the keyboard.
+- **Agents**: every running Claude Code session is listed. Sessions take Delete, Page Up and Page Down
+  in the order they start; pick another key or "Aucune" to rearrange. Colours: white idle, blue
+  thinking (breathing), orange waiting for your approval or answer (breathing), green answered and not
+  read yet, red error. Fn + the key opens the session's Terminal.app tab (for a background session, the
+  tab running `claude attach`). The lights go off a few seconds after the app quits.
 
 The app is in French for now.
 
@@ -105,6 +120,10 @@ Run Ducky's official updater on a Windows PC (hold D, plug in, click OK):
 - The Fn + key shortcut that normally enters update mode (`QK_BOOT`) only restarts the keyboard; hold
   D while plugging in instead.
 - LED power (PD5) is not cut during USB suspend; the LEDs are only blanked.
+- Fn + Page Up / Page Down are the agent keys, so Home and End are only on Fn + [ and Fn + ' (QWERTY
+  positions).
+- Agent status lights follow Claude Code sessions in Terminal.app only, and are hidden while the
+  lighting is switched off with Fn + the lighting toggle.
 
 ---
 
@@ -168,7 +187,7 @@ LDROM bootloader first, so a bad flash is recoverable by holding D while pluggin
 
 | Binary in `builds/` | SHA-256 |
 |---|---|
-| `ducky_one2sf_1967st_iso_hostrgb.bin` (RGB, raw HID protocol v2, saved setup) | `8273a6d68ce0309c61a7b9f85282dd7b3eac9ddf5f921d9d6bd38b2c7d14ecb1` |
+| `ducky_one2sf_1967st_iso_hostrgb.bin` (RGB, raw HID protocol v3, saved setup) | `87f7f71eb7c872bd975f8c05cde68b39a1634ce26b7c0de05321a15f3ba2fdbe` |
 | `ducky_one2sf_1967st_iso_default.bin` (upstream QMK, no RGB) | `0aa26c0664ba77444df447613c159ad47ac65f7963dbeab94df55d0d7bf003bb` |
 
 ## CLI
@@ -196,7 +215,7 @@ key positions instead and `--smooth` anti-aliases by key coverage; both read wor
 
 ## Raw HID protocol
 
-Protocol v2: 32-byte reports on usage page `0xFF60` / usage `0x61`. Byte 0 is the command, arguments
+Protocol v3: 32-byte reports on usage page `0xFF60` / usage `0x61`. Byte 0 is the command, arguments
 follow; the reply echoes the command with byte 1 = status (0 ok, 1 unknown command, 2 bad argument,
 3 flash write failed) and the payload from byte 2.
 
@@ -214,9 +233,12 @@ follow; the reply echoes the command with byte 1 = status (0 ok, 1 unknown comma
 | `0x15` set overlay | `[0x15, first, count, (flags, r, g, b)...]` | per-key colours (flags bit 0 = custom), in RAM |
 | `0x16` clear overlay | `[0x16]` | no custom colours, in RAM |
 | `0x17` save | `[0x17]` | writes the base and the per-key colours to flash |
+| `0x18` indicators | `[0x18, count, (led, r, g, b, mode)...]` | up to 3 status LEDs above everything (mode 1 = breathing); cleared after 5 s without a refresh |
 
-Host colours are never saved. Effects 1-14 are QMK's; 15 is the typing heatmap over the base colour,
-16 the typing heatmap over the per-key colours.
+Host colours and indicators are never saved. Effects 1-14 are QMK's; 15 is the typing heatmap over the
+base colour, 16 the typing heatmap over the per-key colours. The keyboard also sends an unsolicited
+report `[0x30, 0xA5, slot]` for Fn + Delete / Page Up / Page Down (slots 0-2); `0xA5` is never a
+status, so it cannot be mistaken for a reply.
 
 ## App internals
 
@@ -226,8 +248,14 @@ and saved 2 s after the last change. Music mode captures system audio with a Cor
 analyses 15 log-spaced bands (40 Hz to 16 kHz) with automatic gain, and streams frames through the
 host mode at ~30 frames/s; frames are never saved.
 
+Agent status: Claude Code runs `ducky-agent-hook` (bundled in the app) on each hook event; it finds the
+Claude process and its terminal, then updates one JSON file per session in
+`~/Library/Application Support/Ducky RGB/agents` under a lock. The app also reads Claude's own registry
+of running sessions (`~/.claude/sessions`) to list sessions before their first event and drop replaced
+ones, and the end of each transcript to notice turns interrupted with Esc (no hook fires then).
+
 ```sh
 cd app
-swift test                 # protocol, layout, presets, controller, audio (simulated keyboard)
+swift test                 # protocol, layout, presets, controller, audio, agents (simulated keyboard)
 scripts/bundle.sh          # builds app/build/Ducky RGB.app (ad hoc signed)
 ```

@@ -11,6 +11,7 @@ public final class IOKitHIDTransport: HIDTransport, @unchecked Sendable {
     public static let usage = 0x61
 
     public var onConnectionChange: (@Sendable (Bool) -> Void)?
+    public var onEvent: (@Sendable ([UInt8]) -> Void)?
     public var isConnected: Bool { lock.withLock { device != nil } }
 
     private let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
@@ -74,6 +75,10 @@ public final class IOKitHIDTransport: HIDTransport, @unchecked Sendable {
     }
 
     private func receive(_ report: [UInt8]) {
+        if DuckyProtocol.isEvent(report) { // sent by the keyboard on its own, not a reply
+            onEvent?(report)
+            return
+        }
         lock.withLock { inbox.append(report) }
         arrival.signal()
     }

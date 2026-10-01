@@ -264,4 +264,68 @@ final class LightingControllerTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 600_000_000)
         XCTAssertFalse(controller.hostMode)
     }
+
+
+    private let blue = Indicator(led: 28, color: RGB(0, 0, 255), breathing: true)
+
+    func testIndicatorsAreSentAndKeptAlive() async {
+        let fake = FakeKeyboard()
+        let controller = LightingController(transport: fake, saveDelay: 0.1, indicatorRefresh: 0.05)
+        controller.start()
+        await waitUntil { controller.connection == .connected }
+        XCTAssertTrue(controller.supportsIndicators)
+        controller.setIndicators([blue])
+        await waitUntil { fake.indicators == [blue] }
+        XCTAssertEqual(fake.indicators, [blue])
+        await waitUntil { fake.commands().filter { $0 == .setIndicators }.count >= 3 }
+        XCTAssertGreaterThanOrEqual(fake.commands().filter { $0 == .setIndicators }.count, 3)
+        XCTAssertFalse(fake.commands().contains(.save))
+    }
+
+    func testClearingIndicatorsSendsAnEmptyListOnce() async {
+        let fake = FakeKeyboard()
+        let controller = LightingController(transport: fake, saveDelay: 0.1, indicatorRefresh: 0.05)
+        controller.start()
+        await waitUntil { controller.connection == .connected }
+        controller.setIndicators([blue])
+        await waitUntil { fake.indicators == [blue] }
+        controller.setIndicators([])
+        await waitUntil { fake.indicators.isEmpty }
+        let sent = fake.commands().filter { $0 == .setIndicators }.count
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(fake.commands().filter { $0 == .setIndicators }.count, sent)
+    }
+
+    func testIndicatorsAreResentAfterReconnect() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        controller.setIndicators([blue])
+        await waitUntil { fake.indicators == [blue] }
+        fake.setConnected(false)
+        await waitUntil { controller.connection == .disconnected }
+        fake.indicators = [] // the keyboard restarted
+        fake.setConnected(true)
+        await waitUntil { fake.indicators == [blue] }
+        XCTAssertEqual(fake.indicators, [blue])
+    }
+
+    func testIndicatorsNeedProtocolV3() async {
+        let fake = FakeKeyboard(version: 2)
+        let controller = await started(fake)
+        XCTAssertEqual(controller.connection, .connected)
+        XCTAssertFalse(controller.supportsIndicators)
+        controller.setIndicators([blue])
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertFalse(fake.commands().contains(.setIndicators))
+    }
+
+    func testAgentKeyEventsReachTheHandler() async {
+        let fake = FakeKeyboard()
+        let controller = await started(fake)
+        var pressed: [Int] = []
+        controller.onAgentKey = { pressed.append($0) }
+        fake.pressAgentKey(1)
+        await waitUntil { pressed == [1] }
+        XCTAssertEqual(pressed, [1])
+    }
 }

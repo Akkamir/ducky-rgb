@@ -2,7 +2,7 @@ import DuckyCore
 import SwiftUI
 
 enum MainSection: String, CaseIterable, Identifiable {
-    case editor, presets, settings
+    case editor, presets, agents, settings
 
     static let storageKey = "mainSection"
     var id: String { rawValue }
@@ -11,6 +11,7 @@ enum MainSection: String, CaseIterable, Identifiable {
         switch self {
         case .editor: return "Éditeur"
         case .presets: return "Presets"
+        case .agents: return "Agents"
         case .settings: return "Réglages"
         }
     }
@@ -19,6 +20,7 @@ enum MainSection: String, CaseIterable, Identifiable {
         switch self {
         case .editor: return "paintbrush"
         case .presets: return "square.grid.2x2"
+        case .agents: return "sparkles"
         case .settings: return "gearshape"
         }
     }
@@ -39,6 +41,7 @@ struct MainWindow: View {
             switch section {
             case .editor: EditorView()
             case .presets: PresetsView()
+            case .agents: AgentsView()
             case .settings: SettingsView()
             }
         }

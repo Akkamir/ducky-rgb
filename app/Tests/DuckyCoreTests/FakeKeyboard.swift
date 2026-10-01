@@ -4,6 +4,7 @@ import Foundation
 /// Simulates the hostrgb firmware (protocol v2) for tests.
 final class FakeKeyboard: HIDTransport, @unchecked Sendable {
     var onConnectionChange: (@Sendable (Bool) -> Void)?
+    var onEvent: (@Sendable ([UInt8]) -> Void)?
 
     private let lock = NSLock()
     private var connected: Bool
@@ -23,9 +24,10 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
     var savedOverlay: [RGB?]?
     var hostMode = false
     var hostColors = [RGB](repeating: .black, count: 68)
+    var indicators: [Indicator] = []
     var dirty = false
 
-    init(version: UInt8 = 2, effectIDs: [UInt8] = Array(1...14), connected: Bool = true) {
+    init(version: UInt8 = 3, effectIDs: [UInt8] = Array(1...14), connected: Bool = true) {
         self.version = version
         self.effectIDs = effectIDs
         self.connected = connected
@@ -42,6 +44,12 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
     }
 
     func commands() -> [Command] { lock.withLock { log } }
+
+    /// Simulates Fn + an agent key: the keyboard sends an unsolicited event report.
+    func pressAgentKey(_ slot: UInt8) {
+        let callback = onEvent
+        DispatchQueue.global().async { callback?([0x30, 0xA5, slot] + [UInt8](repeating: 0, count: 29)) }
+    }
 
     /// Makes the next occurrence of `command` fail with `status`.
     func failNext(_ command: Command, with status: Status) {
@@ -78,6 +86,7 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
             if let error = thrownErrors.removeValue(forKey: command) { throw error }
             if let status = failures.removeValue(forKey: command) { return fail(status) }
             if version < 2 && report[0] >= 0x10 { return fail(.unknownCommand) }
+            if version < 3 && command == .setIndicators { return fail(.unknownCommand) }
             let a = report
             switch command {
             case .ping:
@@ -94,7 +103,7 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
                 hostColors = [RGB](repeating: RGB(a[1], a[2], a[3]), count: 68)
                 return reply()
             case .getInfo:
-                return reply([2, 68, UInt8(effectIDs.count), 1])
+                return reply([version, 68, UInt8(effectIDs.count), 1])
             case .getEffects:
                 let first = Int(a[1])
                 guard first <= effectIDs.count else { return fail(.badArgument) }
@@ -129,6 +138,14 @@ final class FakeKeyboard: HIDTransport, @unchecked Sendable {
             case .clearOverlay:
                 overlay = [RGB?](repeating: nil, count: 68)
                 dirty = true
+                return reply()
+            case .setIndicators:
+                let count = Int(a[1])
+                guard count <= 3 else { return fail(.badArgument) }
+                indicators = (0..<count).map { i in
+                    let e = Array(a[(2 + 5 * i)..<(7 + 5 * i)])
+                    return Indicator(led: e[0], color: RGB(e[1], e[2], e[3]), breathing: e[4] == 1)
+                }
                 return reply()
             case .save:
                 savedBase = base

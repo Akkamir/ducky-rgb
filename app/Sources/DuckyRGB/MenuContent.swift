@@ -34,6 +34,8 @@ struct MenuContent: View {
             Divider()
             AudioModeSection()
             Divider()
+            AgentsMenuSection { open(.agents) }
+            Divider()
             Button("Ouvrir l'éditeur…") { open(.editor) }
             Button("Réglages…") { open(.settings) }
             Button("Quitter Ducky RGB") { NSApp.terminate(nil) }
